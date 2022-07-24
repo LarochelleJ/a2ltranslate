@@ -114,18 +114,20 @@ if (argsLength > 1) {
     string saveName = fileNameWithoutExtension + "_Translated_" + translateTo.ToUpper() + ".A2L";
     string savePath = Directory.GetCurrentDirectory() + "\\" + saveName;
     try {
-        using (StreamWriter sw = new StreamWriter(savePath)) {
+        System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance); // Getting western 1252, it's not loaded by default
+        using (StreamWriter sw = new StreamWriter(savePath, false, Encoding.GetEncoding(1252))) { // Western 1252 encoding supported by WinOls
             sw.WriteLine(fileContent);
         }
-
+        Console.BackgroundColor = ConsoleColor.DarkGreen;
+        Console.WriteLine("Translation complete! File has been saved under the name:");
+        Console.BackgroundColor = ConsoleColor.DarkYellow;
+        Console.WriteLine(saveName);
+        Console.ResetColor();
     } catch (Exception) {
+        Console.BackgroundColor = ConsoleColor.DarkRed;
         Console.WriteLine("Unexpected error : couldn't write the translated file");
+        Console.ResetColor();
     }
-    Console.BackgroundColor = ConsoleColor.DarkGreen;
-    Console.WriteLine("Translation complete! File has been saved under the name:");
-    Console.BackgroundColor = ConsoleColor.DarkYellow;
-    Console.WriteLine(saveName);
-    Console.ResetColor();
 
     // PROGRAM END
 } else {
@@ -156,7 +158,11 @@ void TranslateInstances(List<string> instancesNames) {
         foreach (string untranslatedName in instancesNames) {
             string translatedWord = Translate(untranslatedName);
             if (!translatedWord.Equals("")) {
-                fileContent = fileContent.Replace(untranslatedName, translatedWord);
+                string formatedTranslation = $"{translatedWord}";
+                string formatedUnstranslated = $"{untranslatedName}";
+                fileContent = fileContent.Replace(formatedUnstranslated, formatedTranslation);
+            } else {
+                wordWithError.Add(translatedWord); // // We will try to re-translate it later - Bad google api response
             }
             progress.UpdateETA(CalculateETA());
             progress.Report(++progressCounter / Convert.ToDouble(instancesNames.Count()));
@@ -165,7 +171,7 @@ void TranslateInstances(List<string> instancesNames) {
 }
 
 string Translate(string word) {
-    var url = $"https://translate.googleapis.com/translate_a/single?client=gtx&sl=de&tl={translateTo}&dt=t&q={HttpUtility.UrlEncode(word)}";
+    var url = $"https://translate.googleapis.com/translate_a/single?client=gtx&sl=de&tl={translateTo}&dt=t&q={Uri.EscapeDataString(word)}";
 #pragma warning disable SYSLIB0014
     string result = "";
     try {
@@ -173,10 +179,13 @@ string Translate(string word) {
             wc.Headers.Add("user-agent", "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 " +
                                           "(KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.36");
             result = wc.DownloadString(url);
-            result = result.Substring(4, result.IndexOf("\"", 4, StringComparison.Ordinal) - 4);
+            Regex regex = new Regex("(?<!\\\\),", RegexOptions.Compiled);
+            result = result.Substring(4, regex.Match(result).Index - 5);
+            // Removing the escaping from the json response, otherwise we might escape the a2l right in the midle of the file and render it unusuable
+            result = result.Replace("\\", string.Empty);
         }
     } catch (Exception) {
-        wordWithError.Add(word); // We will try to re-translate it later
+        wordWithError.Add(word); // We will try to re-translate it later - Network issues
     }
     return result;
 }
@@ -215,7 +224,7 @@ long CalculateETA() {
         lastProgressCounter = progressCounter;
     }
 
-    return  etaMS * (long)(instancesCount - progressCounter);
+    return etaMS * (long)(instancesCount - progressCounter);
 }
 
 
