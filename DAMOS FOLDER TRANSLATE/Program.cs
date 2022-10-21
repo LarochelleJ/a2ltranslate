@@ -2,7 +2,6 @@
 using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Web;
 
 string fileContent;
 string translateTo = "en";
@@ -47,7 +46,6 @@ if (argsLength > 1) {
             case "-help":
                 DisplayHelpMenu();
                 return;
-                break;
             default:
                 // Check if it's the a2l file name
                 string[] fileInfo = parameter.Split('.');
@@ -101,13 +99,18 @@ if (argsLength > 1) {
 
     // Check errors list
     int errorCounter = 0; // Once we reachead 5 tries, we gotta let it go
-    while (wordWithError.Count > 0 && errorCounter++ < 5) {
+    while (wordWithError.Count > 0 && errorCounter++ < 3) {
         Console.BackgroundColor = ConsoleColor.DarkRed;
         Console.WriteLine(wordWithError.Count + " errors has occured during the translation.");
         Console.ResetColor();
-        Console.WriteLine("Trying to fix the errors...");
+        Console.WriteLine($"Trying to fix the errors... [Attempt {errorCounter} / 3]");
         List<string> instancesWithError = new List<string>(wordWithError);
         TranslateInstances(instancesWithError);
+    }
+
+    if (wordWithError.Count > 0) {
+        Console.BackgroundColor = ConsoleColor.DarkMagenta;
+        Console.WriteLine($"{errorCounter} instances couldn't be translated.");
     }
 
     // Writing file
@@ -158,9 +161,7 @@ void TranslateInstances(List<string> instancesNames) {
         foreach (string untranslatedName in instancesNames) {
             string translatedWord = Translate(untranslatedName);
             if (!translatedWord.Equals("")) {
-                string formatedTranslation = $"{translatedWord}";
-                string formatedUnstranslated = $"{untranslatedName}";
-                fileContent = fileContent.Replace(formatedUnstranslated, formatedTranslation);
+                fileContent = fileContent.Replace("\"" + untranslatedName + "\"", "\"" + translatedWord + "\"");
             } else {
                 wordWithError.Add(translatedWord); // // We will try to re-translate it later - Bad google api response
             }
@@ -181,8 +182,8 @@ string Translate(string word) {
             result = wc.DownloadString(url);
             Regex regex = new Regex("(?<!\\\\),", RegexOptions.Compiled);
             result = result.Substring(4, regex.Match(result).Index - 5);
-            // Removing the escaping from the json response, otherwise we might escape the a2l right in the midle of the file and render it unusuable
-            result = result.Replace("\\", string.Empty);
+            // Removing the \ and " from the json response, otherwise we might escape the a2l right in the midle of the file and render it unusuable
+            result = result.Replace("\\", string.Empty).Replace("\"", "'");
         }
     } catch (Exception) {
         wordWithError.Add(word); // We will try to re-translate it later - Network issues
